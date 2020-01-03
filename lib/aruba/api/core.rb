@@ -58,7 +58,9 @@ module Aruba
       def cd(dir, &block)
         if block_given?
           begin
-            fail ArgumentError, "#{expand_path(dir)} is not a directory or does not exist." unless Aruba.platform.directory? expand_path(dir)
+            unless Aruba.platform.directory?(expand_path(dir))
+              raise(ArgumentError, "#{expand_path(dir)} is not a directory or does not exist.")
+            end
 
             old_directory = expand_path('.')
             aruba.current_directory << dir
@@ -83,7 +85,7 @@ module Aruba
           return result
         end
 
-        fail ArgumentError, "#{expand_path(dir)} is not a directory or does not exist." unless Aruba.platform.directory? expand_path(dir)
+        raise(ArgumentError, "#{expand_path(dir)} is not a directory or does not exist.") unless Aruba.platform.directory?(expand_path(dir))
 
         old_directory = expand_path('.')
         aruba.current_directory << dir
@@ -136,7 +138,7 @@ module Aruba
       # rubocop:disable Metrics/PerceivedComplexity
       def expand_path(file_name, dir_string = nil)
         # rubocop:disable Layout/LineLength
-        message = %(Filename "#{file_name}" needs to be a string. It cannot be nil or empty either.  Please use `expand_path('.')` if you want the current directory to be expanded.)
+        message = %(Filename "#{file_name}" needs to be a string. It cannot be nil or empty either. Please use `expand_path('.')` if you want the current directory to be expanded.)
         # rubocop:enable Layout/LineLength
 
         fail ArgumentError, message unless file_name.is_a?(String) && !file_name.empty?
@@ -153,7 +155,9 @@ module Aruba
           path = File.join(*[aruba.fixtures_directory, rest].compact)
 
           # rubocop:disable Layout/LineLength
-          fail ArgumentError, %(Fixture "#{rest}" does not exist in fixtures directory "#{aruba.fixtures_directory}". This was the one we found first on your system from all possible candidates: #{aruba.config.fixtures_directories.map { |p| format('"%s"', p) }.join(', ')}.) unless Aruba.platform.exist? path
+          unless Aruba.platform.exist? path
+            raise(ArgumentError, %(Fixture "#{rest}" does not exist in fixtures directory "#{aruba.fixtures_directory}". This was the one we found first on your system from all possible candidates: #{aruba_fixture_candidates}.))
+          end
 
           # rubocop:enable Layout/LineLength
 
@@ -163,16 +167,17 @@ module Aruba
             ArubaPath.new(File.expand_path(file_name))
           end
 
-          fail ArgumentError, 'Expanding "~/" to "/" is not allowed' if path.to_s == '/'
-          fail ArgumentError, %(Expanding "~/" to a relative path "#{path}" is not allowed) unless path.absolute?
+          raise(ArgumentError, 'Expanding "~/" to "/" is not allowed') if path.to_s == '/'
+          raise(ArgumentError, %(Expanding "~/" to a relative path "#{path}" is not allowed)) unless path.absolute?
 
           path.to_s
-        elsif absolute? file_name
+        elsif absolute?(file_name)
           unless aruba.config.allow_absolute_paths
             caller_location = caller_locations(1, 1).first
             caller_file_line = "#{caller_location.path}:#{caller_location.lineno}"
-            aruba.logger.warn "Aruba's `expand_path` method was called with an absolute path at #{caller_file_line}, which is not recommended." \
-              ' Change the call to pass a relative path or set config.allow_absolute_paths = true to silence this warning'
+            aruba.logger.warn "Aruba's `expand_path` method was called with an absolute path at #{caller_file_line}"\
+              '- which is not recommended. Change the call to pass a relative path or set '\
+              '`config.allow_absolute_paths = true` to silence this warning'
           end
           file_name
         else
@@ -201,6 +206,12 @@ module Aruba
         # make sure the old environment is really restored in "aruba.environment"
         aruba.environment.clear
         aruba.environment.update old_aruba_env
+      end
+
+      private
+
+      def aruba_fixture_candidates
+        aruba.config.fixtures_directories.map { |p| format('"%s"', p) }.join(', ')
       end
     end
   end
